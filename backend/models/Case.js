@@ -73,6 +73,10 @@ const caseSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    aiProcessing: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

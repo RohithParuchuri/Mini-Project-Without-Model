@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { Search, Filter, Plus, ChevronRight, Edit2, Trash2, X, AlertCircle, CheckCircle } from 'lucide-react';
+import { Search, Filter, Plus, ChevronRight, Edit2, Trash2, X, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '../context/AuthContext';
 
@@ -40,6 +40,20 @@ export default function CaseManagement() {
       fetchCases();
     }
   }, [user]);
+
+  // Auto-poll: re-fetch every 3s while any case has aiProcessing === true
+  useEffect(() => {
+    const hasProcessing = cases.some(c => c.aiProcessing);
+    if (!hasProcessing) return;
+    const interval = setInterval(() => {
+      const token = localStorage.getItem('accessToken');
+      fetch(`${API_URL}/cases`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(res => res.json())
+        .then(data => { if (data.success) setCases(data.data); })
+        .catch(() => {});
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [cases]);
 
   const fetchCases = async () => {
     try {
@@ -302,7 +316,19 @@ export default function CaseManagement() {
                     </div>
                   )}
                   <div className="col-span-3">
-                    <p className="text-white font-bold text-lg">{c.title}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-white font-bold text-lg">{c.title}</p>
+                      {c.aiProcessing && (
+                        <motion.div
+                          className="flex items-center gap-1 px-2 py-0.5 bg-purple-500/10 border border-purple-500/20 rounded-full"
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                        >
+                          <Loader2 size={12} className="text-purple-400 animate-spin" />
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400">AI</span>
+                        </motion.div>
+                      )}
+                    </div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-600 mt-1">{c.description?.substring(0, 30)}</p>
                   </div>
 

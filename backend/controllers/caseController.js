@@ -1,5 +1,6 @@
 const Case = require('../models/Case');
 const File = require('../models/File');
+const { classifyAndUpdate } = require('../services/aiClassifier');
 
 /**
  * @desc Create a new case
@@ -34,7 +35,12 @@ exports.createCase = async (req, res) => {
       priority: priority || 'medium',
       evidenceFiles: evidenceFiles || [],
       tags: tags || [],
+      aiProcessing: true,
     });
+
+    // Fire-and-forget: send description to AI for classification
+    // This runs in the background; the user gets an instant response
+    classifyAndUpdate(newCase._id, description).catch(() => {});
 
     res.status(201).json({
       success: true,
