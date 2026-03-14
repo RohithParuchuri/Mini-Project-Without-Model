@@ -8,7 +8,7 @@ const File = require('../models/File');
  */
 exports.createCase = async (req, res) => {
   try {
-    const { caseId, title, description, priority, evidenceFiles } = req.body;
+    const { caseId, title, description, priority, evidenceFiles, tags } = req.body;
 
     if (!caseId || !title || !description) {
       return res.status(400).json({
@@ -33,6 +33,7 @@ exports.createCase = async (req, res) => {
       description,
       priority: priority || 'medium',
       evidenceFiles: evidenceFiles || [],
+      tags: tags || [],
     });
 
     res.status(201).json({
@@ -55,7 +56,10 @@ exports.createCase = async (req, res) => {
  */
 exports.getUserCases = async (req, res) => {
   try {
-    const cases = await Case.find({ userId: req.user.id })
+    // Admin sees ALL cases from ALL users; regular user sees only their own
+    const query = req.user.isAdmin ? {} : { userId: req.user.id };
+    const cases = await Case.find(query)
+      .populate('userId', 'firstName lastName email')
       .populate('evidenceFiles')
       .sort({ createdAt: -1 });
 
@@ -118,7 +122,7 @@ exports.getCaseById = async (req, res) => {
  */
 exports.updateCase = async (req, res) => {
   try {
-    const { title, description, status, investigationProgress, priority, notes, evidenceFiles } = req.body;
+    const { title, description, status, investigationProgress, priority, notes, evidenceFiles, tags } = req.body;
 
     let caseData = await Case.findById(req.params.id);
 
@@ -140,19 +144,24 @@ exports.updateCase = async (req, res) => {
       });
     }
 
-    // Update case
+    // Fields any case owner can update
     if (title) caseData.title = title;
     if (description) caseData.description = description;
-    if (status) {
-      caseData.status = status;
-      if (status === 'closed') {
-        caseData.completedAt = new Date();
-      }
-    }
-    if (investigationProgress !== undefined) caseData.investigationProgress = investigationProgress;
-    if (priority) caseData.priority = priority;
     if (notes !== undefined) caseData.notes = notes;
     if (evidenceFiles) caseData.evidenceFiles = evidenceFiles;
+    if (tags) caseData.tags = tags;
+
+    // Admin-only fields: status, priority, investigationProgress
+    if (req.user.isAdmin) {
+      if (status) {
+        caseData.status = status;
+        if (status === 'closed') {
+          caseData.completedAt = new Date();
+        }
+      }
+      if (investigationProgress !== undefined) caseData.investigationProgress = investigationProgress;
+      if (priority) caseData.priority = priority;
+    }
 
     caseData.updatedAt = new Date();
     caseData = await caseData.save();

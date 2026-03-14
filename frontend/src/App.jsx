@@ -14,7 +14,6 @@ import DashboardLayout from './layouts/DashboardLayout';
 import Dashboard from './pages/Dashboard';
 import CommandCenter from './pages/CommandCenter';
 import CaseManagement from './pages/CaseManagement';
-import SecureVault from './pages/SecureVault';
 import AIAnalysis from './pages/AIAnalysis';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -82,9 +81,6 @@ export default function App() {
           
           {/* Path: /dashboard/profile */}
           <Route path="profile" element={<Profile />} />
-          
-          {/* Path: /dashboard/secure-vault */}
-          <Route path="secure-vault" element={<SecureVault />} />
           
           {/* Path: /dashboard/ai-analysis OR /dashboard/ai-analysis/123
               The :id? parameter ensures the page loads even without a specific case selected.

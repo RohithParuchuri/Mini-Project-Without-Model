@@ -19,10 +19,21 @@ export default function CaseManagement() {
   const [editForm, setEditForm] = useState({
     title: '',
     description: '',
-    status: 'open',
+    status: 'waiting-for-review',
     priority: 'medium',
-    notes: ''
+    notes: '',
+    tags: '',
+    investigationProgress: 0
   });
+  const [isCreatingCase, setIsCreatingCase] = useState(false);
+  const [newCaseForm, setNewCaseForm] = useState({
+    title: '',
+    description: '',
+    incidentDate: new Date().toISOString().split('T')[0],
+    tags: '',
+    files: []
+  });
+  const [expandedCase, setExpandedCase] = useState(null);
 
   useEffect(() => {
     if (user) {
@@ -54,22 +65,37 @@ export default function CaseManagement() {
     setEditForm({
       title: caseItem.title,
       description: caseItem.description || '',
-      status: caseItem.status,
+      status: caseItem.status || 'waiting-for-review',
       priority: caseItem.priority || 'medium',
-      notes: caseItem.notes || ''
+      notes: caseItem.notes || '',
+      tags: caseItem.tags ? caseItem.tags.join(', ') : '',
+      investigationProgress: caseItem.investigationProgress || 0
     });
   };
 
   const handleSaveCase = async () => {
     try {
       const token = localStorage.getItem('accessToken');
+      // Build the update payload — exclude admin-only fields for regular users
+      const updatePayload = {
+        title: editForm.title,
+        description: editForm.description,
+        notes: editForm.notes,
+        tags: editForm.tags.split(',').map(tag => tag.trim()).filter(tag => tag)
+      };
+      // Only admin can update status, priority, investigationProgress
+      if (user?.isAdmin) {
+        updatePayload.status = editForm.status;
+        updatePayload.priority = editForm.priority;
+        updatePayload.investigationProgress = editForm.investigationProgress;
+      }
       const response = await fetch(`${API_URL}/cases/${editingCase}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(editForm)
+        body: JSON.stringify(updatePayload)
       });
 
       const data = await response.json();
@@ -107,6 +133,45 @@ export default function CaseManagement() {
     }
   };
 
+  const handleCreateCase = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('accessToken');
+      
+      const tagsArray = newCaseForm.tags.split(',').map(t => t.trim()).filter(t => t);
+      
+      const response = await fetch(`${API_URL}/cases`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          caseId: `C-${Math.floor(Math.random() * 100000)}`,
+          title: newCaseForm.title,
+          description: newCaseForm.description,
+          tags: tagsArray,
+          incidentDate: newCaseForm.incidentDate
+        })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setSuccess('Case created successfully');
+        setTimeout(() => setSuccess(''), 3000);
+        setIsCreatingCase(false);
+        setNewCaseForm({ title: '', description: '', incidentDate: new Date().toISOString().split('T')[0], tags: '', files: [] });
+        await fetchCases();
+      } else {
+        setError(data.message || 'Failed to create case');
+      }
+    } catch (err) {
+      setError('Failed to create case');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const filteredCases = cases.filter(c => {
     const matchesTab = activeTab === 'All' || c.status === activeTab.toLowerCase();
     const matchesSearch = c.caseId?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -124,7 +189,7 @@ export default function CaseManagement() {
           <p className="text-slate-500 text-lg font-medium">Global registry of active digital investigations. Create, edit, and track your investigation cases.</p>
         </div>
         <button 
-          onClick={() => window.location.href = '/dashboard/cases'}
+          onClick={() => setIsCreatingCase(true)}
           className="flex items-center gap-2 px-8 py-3 rounded-xl bg-[#F26419] text-white text-sm font-black uppercase tracking-widest hover:bg-[#d44f0d] transition-all"
         >
           <Plus size={20} /> Open New Case
@@ -157,7 +222,7 @@ export default function CaseManagement() {
       {/* Filter Bar - Borderless Style */}
       <div className="flex justify-between items-center py-4">
         <div className="flex gap-8">
-          {['All', 'open', 'in-progress', 'pending-review', 'closed'].map(tab => (
+          {['All', 'waiting-for-review', 'under-investigation', 'resolved', 'closed'].map(tab => (
             <button 
               key={tab}
               onClick={() => setActiveTab(tab === 'All' ? 'All' : tab)}
@@ -166,7 +231,7 @@ export default function CaseManagement() {
                 activeTab === tab || (activeTab === 'All' && tab === 'All') ? "text-[#F26419]" : "text-slate-600 hover:text-slate-400"
               )}
             >
-              {tab === 'in-progress' ? 'In Progress' : tab === 'pending-review' ? 'Pending Review' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
               {(activeTab === tab || (activeTab === 'All' && tab === 'All')) && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-[#F26419]" />}
             </button>
           ))}
@@ -194,88 +259,256 @@ export default function CaseManagement() {
             <p className="text-slate-400">Loading cases...</p>
           </div>
         ) : filteredCases.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-slate-400">No cases found. Create a new case to get started.</p>
-          </div>
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            className="text-center py-20 bg-white/[0.01] border border-white/5 rounded-3xl"
+          >
+            <div className="size-20 bg-white/[0.03] text-slate-500 rounded-2xl mx-auto flex items-center justify-center mb-6">
+              <Search size={32} />
+            </div>
+            <h3 className="text-2xl font-black text-white mb-2">No Active Cases</h3>
+            <p className="text-slate-400 max-w-sm mx-auto">There are currently no cases matching your filters. Click "Open New Case" to create one.</p>
+          </motion.div>
         ) : (
           <>
-            <div className="grid grid-cols-12 px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-700">
+            <div className={cn("grid px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-700", user?.isAdmin ? "grid-cols-14" : "grid-cols-12")}>
               <div className="col-span-2">Case ID</div>
+              {user?.isAdmin && <div className="col-span-2">User</div>}
               <div className="col-span-3">Title</div>
               <div className="col-span-3">Investigation Progress</div>
               <div className="col-span-2">Date Opened</div>
-              <div className="col-span-2 text-right">Actions</div>
             </div>
 
             {filteredCases.map((c) => (
-              <motion.div
-                key={c._id}
-                className="grid grid-cols-12 items-center px-6 py-8 hover:bg-white/[0.02] transition-all group rounded-2xl"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.5, delay: 0.1, ease: "easeOut" }}
-                whileHover={{
-                  backgroundColor: "rgba(255, 255, 255, 0.04)",
-                  x: 4,
-                  transition: { duration: 0.2 }
-                }}
-              >
-                <div className="col-span-2 font-mono font-bold text-[#F26419] text-lg">#{c.caseId}</div>
-                <div className="col-span-3">
-                  <p className="text-white font-bold text-lg">{c.title}</p>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-600 mt-1">{c.description?.substring(0, 30)}</p>
-                </div>
-
-                {/* Linear Progress Graph */}
-                <div className="col-span-3 pr-12">
-                  <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-3">
-                    <span className={cn(c.investigationProgress === 100 ? "text-emerald-500" : "text-slate-500")}>
-                      {c.status}
-                    </span>
-                    <span className="text-white">{c.investigationProgress}%</span>
+              <React.Fragment key={c._id}>
+                <motion.div
+                  className={cn("grid items-center px-6 py-8 hover:bg-white/[0.02] transition-all group rounded-2xl cursor-pointer", user?.isAdmin ? "grid-cols-14" : "grid-cols-12")}
+                  onClick={() => setExpandedCase(expandedCase === c._id ? null : c._id)}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.5, delay: 0.1, ease: "easeOut" }}
+                  whileHover={{
+                    backgroundColor: "rgba(255, 255, 255, 0.04)",
+                    x: 4,
+                    transition: { duration: 0.2 }
+                  }}
+                >
+                  <div className="col-span-2 font-mono font-bold text-[#F26419] text-lg">#{c.caseId}</div>
+                  {user?.isAdmin && (
+                    <div className="col-span-2">
+                      <p className="text-white text-sm font-bold">{c.userId?.firstName} {c.userId?.lastName}</p>
+                      <p className="text-[10px] text-slate-500 font-mono">{c.userId?.email}</p>
+                    </div>
+                  )}
+                  <div className="col-span-3">
+                    <p className="text-white font-bold text-lg">{c.title}</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-600 mt-1">{c.description?.substring(0, 30)}</p>
                   </div>
-                  <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                    <motion.div
-                      className={cn(
-                        "h-full",
-                        c.investigationProgress === 100 ? "bg-emerald-500" : "bg-[#F26419]"
-                      )}
-                      initial={{ width: 0 }}
-                      animate={{ width: `${c.investigationProgress}%` }}
-                      transition={{ duration: 1.2, ease: "easeOut", delay: 0.2 }}
-                    />
+
+                  {/* Linear Progress Graph */}
+                  <div className="col-span-3 pr-12">
+                    <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-3">
+                      <span className={cn(c.investigationProgress === 100 ? "text-emerald-500" : "text-slate-500")}>
+                        {c.status.replace(/-/g, ' ')}
+                      </span>
+                      <span className="text-white">{c.investigationProgress}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                      <motion.div
+                        className={cn(
+                          "h-full",
+                          c.investigationProgress === 100 ? "bg-emerald-500" : "bg-[#F26419]"
+                        )}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${c.investigationProgress}%` }}
+                        transition={{ duration: 1.2, ease: "easeOut", delay: 0.2 }}
+                      />
+                    </div>
                   </div>
-                </div>
 
-                <div className="col-span-2 text-slate-500 font-mono text-sm">{new Date(c.createdAt).toLocaleDateString()}</div>
+                  <div className="col-span-2 text-slate-500 font-mono text-sm">{new Date(c.createdAt).toLocaleDateString()}</div>
 
-                <div className="col-span-2 text-right flex items-center gap-2 justify-end">
-                  <motion.button
-                    onClick={() => handleEditClick(c)}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-700 hover:text-[#F26419] hover:bg-white/5 rounded-lg transition-all"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                  <div className="col-span-2 text-right flex items-center gap-2 justify-end">
+                    <motion.button
+                      onClick={(e) => { e.stopPropagation(); handleEditClick(c); }}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-700 hover:text-[#F26419] hover:bg-white/5 rounded-lg transition-all"
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <Edit2 size={14} /> EDIT
+                    </motion.button>
+                    <motion.button
+                      onClick={(e) => { e.stopPropagation(); handleDeleteCase(c._id); }}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-700 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <Trash2 size={14} /> DELETE
+                    </motion.button>
+                  </div>
+                </motion.div>
+                
+                {/* Expanded Details View */}
+                {expandedCase === c._id && (
+                  <motion.div 
+                    initial={{ opacity: 0, height: 0 }} 
+                    animate={{ opacity: 1, height: 'auto' }} 
+                    className="px-6 py-6 border-b border-t border-white/5 bg-white/[0.01]"
                   >
-                    <Edit2 size={14} /> EDIT
-                  </motion.button>
-                  <motion.button
-                    onClick={() => handleDeleteCase(c._id)}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-700 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Trash2 size={14} /> DELETE
-                  </motion.button>
-                </div>
-              </motion.div>
+                    <div className="grid grid-cols-3 gap-8">
+                      <div>
+                        <h4 className="text-[10px] font-black tracking-widest uppercase text-slate-500 mb-3">Details</h4>
+                        <p className="text-sm text-slate-300 mb-4">{c.description}</p>
+                        {c.tags && c.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {c.tags.map(tag => (
+                              <span key={tag} className="px-2 py-1 bg-white/5 rounded text-[10px] font-bold text-slate-400 uppercase tracking-widest">{tag}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <h4 className="text-[10px] font-black tracking-widest uppercase text-slate-500 mb-3">Status</h4>
+                        <div className="space-y-3">
+                          <p className="text-sm text-slate-300 border border-white/5 rounded-lg p-3 bg-white/5 uppercase tracking-wider font-bold">Priority: <span className="text-white">{c.priority}</span></p>
+                          <p className="text-sm text-slate-300 border border-white/5 rounded-lg p-3 bg-white/5 uppercase tracking-wider font-bold">Status: <span className="text-[#F26419]">{c.status.replace(/-/g, ' ')}</span></p>
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="text-[10px] font-black tracking-widest uppercase text-slate-500 mb-3">Files ({c.evidenceFiles?.length || 0})</h4>
+                        {c.evidenceFiles && c.evidenceFiles.length > 0 ? (
+                          <div className="space-y-2">
+                            {/* We will populate actual file data if it was populated in the backend, for now show length */}
+                            <p className="text-sm text-slate-400">{c.evidenceFiles.length} evidence file(s) attached.</p>
+                          </div>
+                        ) : (
+                          <div className="border border-dashed border-white/10 rounded-xl p-4 text-center">
+                            <p className="text-xs text-slate-500">No files uploaded yet.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </React.Fragment>
             ))}
           </>
         )}
       </div>
 
+      {/* New Case Modal */}
+      {isCreatingCase && (
+        <motion.div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          onClick={() => setIsCreatingCase(false)}
+        >
+          <motion.div
+            className="bg-[#121212] border border-white/10 rounded-3xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-3xl font-black text-white">Open New Case</h2>
+              <button
+                onClick={() => setIsCreatingCase(false)}
+                className="p-2 hover:bg-white/10 rounded-lg transition-all"
+              >
+                <X size={24} className="text-slate-400" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {/* Title */}
+              <div>
+                <label className="block text-sm font-bold text-slate-300 mb-2">CASE TITLE</label>
+                <input
+                  type="text"
+                  value={newCaseForm.title}
+                  onChange={(e) => setNewCaseForm({ ...newCaseForm, title: e.target.value })}
+                  placeholder="E.g., Unauthorized Access Log Analysis"
+                  className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-[#F26419] transition-colors"
+                  required
+                />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-bold text-slate-300 mb-2">ISSUE TEXT (DESCRIPTION)</label>
+                <textarea
+                  value={newCaseForm.description}
+                  onChange={(e) => setNewCaseForm({ ...newCaseForm, description: e.target.value })}
+                  placeholder="Detail the issue..."
+                  rows="4"
+                  className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-[#F26419] transition-colors resize-none"
+                  required
+                />
+              </div>
+
+              {/* Date & Tags */}
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-bold text-slate-300 mb-2">INCIDENT DATE</label>
+                  <input
+                    type="date"
+                    value={newCaseForm.incidentDate}
+                    onChange={(e) => setNewCaseForm({ ...newCaseForm, incidentDate: e.target.value })}
+                    className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-[#F26419] transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-300 mb-2">METADATA / TAGS</label>
+                  <input
+                    type="text"
+                    value={newCaseForm.tags}
+                    onChange={(e) => setNewCaseForm({ ...newCaseForm, tags: e.target.value })}
+                    placeholder="Comma separated (e.g., malware, high-risk)"
+                    className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-[#F26419] transition-colors"
+                  />
+                </div>
+              </div>
+
+              {/* File Upload Simulator */}
+              <div>
+                <label className="block text-sm font-bold text-slate-300 mb-2">MULTI-IMAGE / FILE UPLOAD</label>
+                <div className="border border-dashed border-white/20 rounded-xl p-8 text-center bg-white/[0.02]">
+                  <p className="text-sm text-slate-400">Click to browse or drag and drop files.</p>
+                  <input type="file" multiple className="mt-4 text-xs text-slate-300" />
+                </div>
+              </div>
+
+              {/* Buttons */}
+              <div className="flex gap-4 pt-4">
+                <motion.button
+                  onClick={handleCreateCase}
+                  disabled={loading || !newCaseForm.title || !newCaseForm.description}
+                  className="flex-1 px-6 py-3 bg-[#F26419] hover:bg-[#d44f0d] disabled:opacity-50 text-white font-bold rounded-lg transition-all"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  {loading ? 'Creating...' : 'Submit Case'}
+                </motion.button>
+                <motion.button
+                  onClick={() => setIsCreatingCase(false)}
+                  className="flex-1 px-6 py-3 bg-slate-600/30 hover:bg-slate-600/50 text-white font-bold rounded-lg transition-all"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Cancel
+                </motion.button>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+
       {/* Edit Case Modal */}
       {editingCase && (
         <motion.div
+  
           className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -320,35 +553,78 @@ export default function CaseManagement() {
                 />
               </div>
 
-              {/* Status and Priority */}
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-bold text-slate-300 mb-2">STATUS</label>
-                  <select
-                    value={editForm.status}
-                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                    className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-[#F26419] transition-colors"
-                  >
-                    <option value="open">Open</option>
-                    <option value="in-progress">In Progress</option>
-                    <option value="pending-review">Pending Review</option>
-                    <option value="closed">Closed</option>
-                  </select>
+              {/* Status and Priority — Admin can edit, users see read-only */}
+              {user?.isAdmin ? (
+                <>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-bold text-slate-300 mb-2">STATUS</label>
+                      <select
+                        value={editForm.status}
+                        onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                        className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-[#F26419] transition-colors"
+                      >
+                        <option value="waiting-for-review">Waiting for Review</option>
+                        <option value="under-investigation">Under Investigation</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="closed">Closed</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-slate-300 mb-2">PRIORITY</label>
+                      <select
+                        value={editForm.priority}
+                        onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}
+                        className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-[#F26419] transition-colors"
+                      >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="critical">Critical</option>
+                      </select>
+                    </div>
+                  </div>
+                  {/* Investigation Progress Slider — Admin only */}
+                  <div>
+                    <label className="block text-sm font-bold text-slate-300 mb-2">
+                      INVESTIGATION PROGRESS — <span className="text-[#F26419]">{editForm.investigationProgress}%</span>
+                    </label>
+                    <input
+                      type="range" min="0" max="100"
+                      value={editForm.investigationProgress}
+                      onChange={(e) => setEditForm({ ...editForm, investigationProgress: parseInt(e.target.value) })}
+                      className="w-full h-2 rounded-full appearance-none cursor-pointer accent-[#F26419]"
+                      style={{ background: `linear-gradient(to right, #F26419 ${editForm.investigationProgress}%, rgba(255,255,255,0.05) ${editForm.investigationProgress}%)` }}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-300 mb-2">STATUS</label>
+                    <p className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-4 py-3 text-slate-400 uppercase tracking-wider text-sm">
+                      {editForm.status ? editForm.status.replace(/-/g, ' ') : '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-300 mb-2">PRIORITY</label>
+                    <p className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-4 py-3 text-slate-400 uppercase tracking-wider text-sm">
+                      {editForm.priority || '—'}
+                    </p>
+                  </div>
                 </div>
+              )}
 
-                <div>
-                  <label className="block text-sm font-bold text-slate-300 mb-2">PRIORITY</label>
-                  <select
-                    value={editForm.priority}
-                    onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}
-                    className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-[#F26419] transition-colors"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
-                  </select>
-                </div>
+              {/* Tags */}
+              <div>
+                <label className="block text-sm font-bold text-slate-300 mb-2">TAGS</label>
+                <input
+                  type="text"
+                  value={editForm.tags}
+                  onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
+                  placeholder="Comma separated tags"
+                  className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-[#F26419] transition-colors"
+                />
               </div>
 
               {/* Notes */}

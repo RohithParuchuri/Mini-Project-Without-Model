@@ -91,13 +91,6 @@ export default function Sidebar() {
           index={1}
         />
         <NavItem
-          icon={FileLock}
-          label="Secure Vault"
-          path="/dashboard/secure-vault"
-          active={location.pathname.includes("secure-vault")}
-          index={2}
-        />
-        <NavItem
           icon={BarChart3}
           label="AI Analysis"
           path="/dashboard/analysis"

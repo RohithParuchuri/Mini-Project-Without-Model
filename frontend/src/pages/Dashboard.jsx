@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { ShieldAlert, Lock, BarChart3, Zap, TrendingUp, Users, Clock, AlertCircle } from 'lucide-react';
+import { ShieldAlert, Lock, BarChart3, Zap, TrendingUp, Users, Clock, AlertCircle, CheckCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const StatCard = ({ icon: Icon, label, value, subtext, color, delay = 0 }) => (
   <motion.div
@@ -69,6 +72,48 @@ const QuickAccessCard = ({ icon: Icon, title, description, path, color, delay = 
 );
 
 export default function Dashboard() {
+  const { user } = useAuth();
+  const [cases, setCases] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (user) {
+      fetchCases();
+    }
+  }, [user]);
+
+  const fetchCases = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`${API_URL}/cases`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setCases(data.data);
+      }
+    } catch (err) {
+      console.error('Failed to parse dashboard cases data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const criticalAlerts = cases.filter(c => c.priority === 'critical').length;
+  const pendingReview = cases.filter(c => c.status === 'waiting-for-review' || c.status === 'pending-review').length;
+  const activeCases = cases.filter(c => c.status === 'under-investigation' || c.status === 'in-progress').length;
+  
+  // Recent resolved cases within roughly the last 24h
+  const resolvedCases = cases.filter(c => {
+    if (c.status !== 'resolved') return false;
+    const updatedAt = new Date(c.updatedAt);
+    const now = new Date();
+    const diffTime = Math.abs(now - updatedAt);
+    const diffHours = Math.ceil(diffTime / (1000 * 60 * 60));
+    return diffHours <= 24;
+  }).length;
+
   return (
     <div className="w-full space-y-10 animate-in fade-in duration-500">
       {/* Header */}
@@ -82,7 +127,7 @@ export default function Dashboard() {
         <StatCard
           icon={ShieldAlert}
           label="Critical Alerts"
-          value="12"
+          value={loading ? '-' : criticalAlerts}
           subtext="Require immediate attention"
           color="bg-red-500/10 text-red-500"
           delay={0}
@@ -90,24 +135,24 @@ export default function Dashboard() {
         <StatCard
           icon={Clock}
           label="Pending Review"
-          value="48"
-          subtext="Awaiting analysis"
+          value={loading ? '-' : pendingReview}
+          subtext="Awaiting initial analysis"
           color="bg-orange-500/10 text-orange-500"
           delay={100}
         />
         <StatCard
           icon={TrendingUp}
           label="Active Cases"
-          value="156"
-          subtext="In investigation"
-          color="bg-blue-500/10 text-blue-500"
+          value={loading ? '-' : activeCases}
+          subtext="Currently investigating"
+          color="bg-purple-500/10 text-purple-500"
           delay={200}
         />
         <StatCard
-          icon={AlertCircle}
+          icon={CheckCircle}
           label="Resolved (24h)"
-          value="31"
-          subtext="Successfully closed"
+          value={loading ? '-' : resolvedCases}
+          subtext="Recently closed"
           color="bg-emerald-500/10 text-emerald-500"
           delay={300}
         />
@@ -116,15 +161,7 @@ export default function Dashboard() {
       {/* Quick Access Section */}
       <div className="space-y-4">
         <h2 className="text-2xl font-black text-white tracking-tight">Quick Access</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <QuickAccessCard
-            icon={Lock}
-            title="Secure Vault"
-            description="Manage and analyze evidence files securely. Upload, process, and store digital evidence."
-            path="/dashboard/secure-vault"
-            color="bg-orange-500/10 text-orange-500"
-            delay={0}
-          />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <QuickAccessCard
             icon={BarChart3}
             title="AI Analysis"
@@ -160,13 +197,17 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {[
-                  { id: '#8829-X', type: 'Audio Evidence', status: 'Processing', time: '2 mins ago' },
-                  { id: '#8721-A', type: 'Video Screenshot', status: 'Analyzed', time: '45 mins ago' },
-                  { id: '#8614-B', type: 'Chat Logs', status: 'Completed', time: '2 hours ago' },
-                ].map((item, idx) => (
+                {loading ? (
+                  <tr>
+                    <td colSpan="5" className="px-6 py-8 text-center text-slate-500">Loading recent activity...</td>
+                  </tr>
+                ) : cases.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="px-6 py-8 text-center text-slate-500">No active cases to display.</td>
+                  </tr>
+                ) : cases.slice(0, 5).map((item, idx) => (
                   <motion.tr
-                    key={idx}
+                    key={item._id}
                     className="border-b border-white/5 hover:bg-white/[0.02] transition-all duration-300 group"
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -176,23 +217,26 @@ export default function Dashboard() {
                       transition: { duration: 0.2 }
                     }}
                   >
-                    <td className="px-6 py-4 font-mono text-primary font-bold">{item.id}</td>
-                    <td className="px-6 py-4 text-white">{item.type}</td>
+                    <td className="px-6 py-4 font-mono text-primary font-bold">#{item.caseId}</td>
+                    <td className="px-6 py-4 text-white">
+                      {item.title}
+                      {item.tags && item.tags.length > 0 && <span className="ml-2 px-2 py-0.5 bg-white/5 rounded text-[9px] uppercase tracking-wider text-slate-400">{Array.isArray(item.tags) ? item.tags[0] : item.tags}</span>}
+                    </td>
                     <td className="px-6 py-4">
                       <motion.span
                         className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all duration-300
-                          ${item.status === 'Processing' ? 'bg-orange-500/10 text-orange-500' :
-                            item.status === 'Analyzed' ? 'bg-blue-500/10 text-blue-500' :
-                            'bg-emerald-500/10 text-emerald-500'}`}
+                          ${(item.status || 'open') === 'under-investigation' ? 'bg-orange-500/10 text-orange-500' :
+                            (item.status || 'open') === 'resolved' ? 'bg-blue-500/10 text-blue-500' :
+                            (item.status || 'open') === 'closed' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-500/10 text-slate-400'}`}
                         whileHover={{ scale: 1.05 }}
                       >
-                        {item.status}
+                        {(item.status || 'open').replace(/-/g, ' ')}
                       </motion.span>
                     </td>
-                    <td className="px-6 py-4 text-slate-500 text-sm">{item.time}</td>
+                    <td className="px-6 py-4 text-slate-500 text-sm">{new Date(item.updatedAt).toLocaleDateString()}</td>
                     <td className="px-6 py-4 text-right">
                       <Link
-                        to={`/dashboard/analysis/${item.id}`}
+                        to={`/dashboard/cases`}
                         className="text-[10px] font-bold uppercase text-primary hover:underline hover:text-primary/80 transition-colors duration-300 inline-block group"
                       >
                         <motion.span whileHover={{ x: 4 }} transition={{ type: "spring", stiffness: 400, damping: 20 }}>

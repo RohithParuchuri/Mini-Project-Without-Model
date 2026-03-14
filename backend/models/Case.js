@@ -29,8 +29,12 @@ const caseSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['open', 'in-progress', 'pending-review', 'closed'],
-      default: 'open',
+      enum: ['waiting-for-review', 'under-investigation', 'resolved', 'closed'],
+      default: 'waiting-for-review',
+    },
+    tags: {
+      type: [String],
+      default: [],
     },
     investigationProgress: {
       type: Number,

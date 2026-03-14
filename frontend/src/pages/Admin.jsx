@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -19,10 +19,13 @@ const ADMIN = {
 };
 
 const statusColors = {
+  'waiting-for-review': { bg: 'bg-purple-500/10', text: 'text-purple-400', dot: 'bg-purple-400' },
+  'under-investigation': { bg: 'bg-amber-500/10', text: 'text-amber-400', dot: 'bg-amber-400' },
+  'resolved': { bg: 'bg-emerald-500/10', text: 'text-emerald-400', dot: 'bg-emerald-400' },
+  'closed': { bg: 'bg-slate-500/10', text: 'text-slate-400', dot: 'bg-slate-400' },
   'open': { bg: 'bg-blue-500/10', text: 'text-blue-400', dot: 'bg-blue-400' },
   'in-progress': { bg: 'bg-amber-500/10', text: 'text-amber-400', dot: 'bg-amber-400' },
   'pending-review': { bg: 'bg-purple-500/10', text: 'text-purple-400', dot: 'bg-purple-400' },
-  'closed': { bg: 'bg-slate-500/10', text: 'text-slate-400', dot: 'bg-slate-400' },
 };
 
 const priorityColors = {
@@ -49,6 +52,7 @@ export default function Admin() {
   });
   const [adminCreds, setAdminCreds] = useState({ email: 'admin@admin.com', password: 'admin@123' });
   const [stats, setStats] = useState({ totalUsers: 0, totalCases: 0, openCases: 0, closedCases: 0 });
+  const [allCases, setAllCases] = useState([]);
 
   const handleAdminLogin = async (e) => {
     e.preventDefault();
@@ -61,11 +65,14 @@ export default function Admin() {
         body: JSON.stringify({ email: adminCreds.email, password: adminCreds.password })
       });
       const data = await response.json();
-      if (!response.ok || !data.data?.user?.isAdmin) throw new Error('Invalid admin credentials');
-      setAdminToken(data.data.accessToken);
+      if (!response.ok || !data.success) throw new Error(data.message || 'Login failed');
+      if (!data.data?.user?.isAdmin) throw new Error('This account does not have admin privileges');
+      const token = data.data.accessToken;
+      setAdminToken(token);
       setIsLoggedIn(true);
-      fetchUsers(data.data.accessToken);
-      fetchAllCasesForStats(data.data.accessToken);
+      // Await both fetches sequentially to avoid race conditions
+      await fetchUsers(token);
+      await fetchAllCasesForStats(token);
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {
@@ -77,8 +84,12 @@ export default function Admin() {
     try {
       const response = await fetch(`${API_URL}/admin/users`, { headers: { 'Authorization': `Bearer ${token}` } });
       const data = await response.json();
-      if (data.success) setUsers(data.data);
+      if (data.success) {
+        setUsers(data.data);
+        return data.data;
+      }
     } catch (err) { console.error('Error fetching users:', err); }
+    return [];
   };
 
   const fetchAllCasesForStats = async (token) => {
@@ -87,12 +98,13 @@ export default function Admin() {
       const data = await response.json();
       if (data.success) {
         const cases = data.data;
-        setStats({
-          totalUsers: users.length,
+        setAllCases(cases);
+        setStats(prev => ({
+          ...prev,
           totalCases: cases.length,
-          openCases: cases.filter(c => c.status === 'open' || c.status === 'in-progress').length,
-          closedCases: cases.filter(c => c.status === 'closed').length,
-        });
+          openCases: cases.filter(c => ['open', 'in-progress', 'waiting-for-review', 'under-investigation'].includes(c.status)).length,
+          closedCases: cases.filter(c => ['closed', 'resolved'].includes(c.status)).length,
+        }));
       }
     } catch (err) { console.error('Error fetching stats:', err); }
   };
@@ -122,7 +134,8 @@ export default function Admin() {
       if (data.success) {
         showSuccess('Case updated successfully');
         setEditingCase(null);
-        if (selectedUser) fetchUserCases(selectedUser._id, adminToken);
+        if (selectedUser) await fetchUserCases(selectedUser._id, adminToken);
+        await fetchAllCasesForStats(adminToken);
       } else { setError(data.message || 'Failed to update case'); }
     } catch (err) { setError('Failed to update case'); }
   };
@@ -136,7 +149,8 @@ export default function Admin() {
       const data = await response.json();
       if (data.success) {
         showSuccess('Case deleted successfully');
-        if (selectedUser) fetchUserCases(selectedUser._id, adminToken);
+        if (selectedUser) await fetchUserCases(selectedUser._id, adminToken);
+        await fetchAllCasesForStats(adminToken);
       }
     } catch (err) { setError('Failed to delete case'); }
   };
@@ -145,12 +159,19 @@ export default function Admin() {
   const handleLogout = () => { setIsLoggedIn(false); setAdminToken(null); setSelectedUser(null); navigate('/'); };
   const openEditModal = (c) => {
     setEditingCase(c);
-    setEditForm({ title: c.title, description: c.description || '', status: c.status, priority: c.priority || 'medium', investigationProgress: c.investigationProgress || 0 });
+    setEditForm({ title: c.title, description: c.description || '', status: c.status || 'waiting-for-review', priority: c.priority || 'medium', investigationProgress: c.investigationProgress || 0 });
   };
 
   useEffect(() => {
     if (adminToken && users.length) setStats(prev => ({ ...prev, totalUsers: users.filter(u => !u.isAdmin).length }));
   }, [users, adminToken]);
+
+  // Refresh all cases from DB on each render cycle when admin is logged in
+  useEffect(() => {
+    if (adminToken && isLoggedIn) {
+      fetchAllCasesForStats(adminToken);
+    }
+  }, [adminToken, isLoggedIn]);
 
   const filteredUsers = users.filter(u =>
     !u.isAdmin && (`${u.firstName} ${u.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) || u.email.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -325,49 +346,65 @@ export default function Admin() {
                   <p className="text-slate-400 font-bold">No cases found for this user</p>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {userCases.map((c, idx) => {
-                    const sColor = statusColors[c.status] || statusColors['open'];
-                    const pColor = priorityColors[c.priority] || priorityColors['medium'];
-                    return (
-                      <motion.div key={c._id} className="border rounded-2xl p-6" style={{ background: ADMIN.card, borderColor: ADMIN.border }}
-                        initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }}>
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-3 mb-2 flex-wrap">
-                              <span className="font-mono text-sm text-violet-400 font-bold">{c.caseId}</span>
-                              <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider ${sColor.bg} ${sColor.text}`}>{c.status}</span>
-                              <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider ${pColor.bg} ${pColor.text}`}>{c.priority || 'medium'}</span>
-                            </div>
-                            <h3 className="text-lg font-bold text-white mb-1">{c.title}</h3>
-                            <p className="text-sm text-slate-400 line-clamp-2 mb-3">{c.description}</p>
-                            <div className="flex items-center gap-3">
-                              <div className="flex-1 max-w-xs h-2 bg-white/5 rounded-full overflow-hidden">
-                                <motion.div className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 rounded-full"
-                                  initial={{ width: 0 }} animate={{ width: `${c.investigationProgress}%` }} transition={{ duration: 0.8 }} />
-                              </div>
-                              <span className="text-xs font-bold text-slate-400">{c.investigationProgress}%</span>
-                            </div>
-                            <div className="flex items-center gap-4 mt-3 text-xs text-slate-500">
-                              <span className="flex items-center gap-1"><Clock size={12} /> Created {new Date(c.createdAt).toLocaleDateString()}</span>
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            <motion.button onClick={() => openEditModal(c)}
-                              className="p-2.5 border border-violet-500/20 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 rounded-xl transition-all"
-                              whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} title="Edit case">
-                              <Edit2 size={16} />
-                            </motion.button>
-                            <motion.button onClick={() => handleDeleteCase(c._id)}
-                              className="p-2.5 border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition-all"
-                              whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} title="Delete case">
-                              <Trash2 size={16} />
-                            </motion.button>
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
+                <div className="bg-[#121212] border border-white/5 rounded-3xl overflow-hidden mt-6">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-white/[0.02] border-b border-white/5">
+                        <tr className="text-[11px] uppercase font-black text-slate-500 tracking-wider">
+                          <th className="px-6 py-4 text-left">Case ID</th>
+                          <th className="px-6 py-4 text-left">Submission Date</th>
+                          <th className="px-6 py-4 text-left">Current Status</th>
+                          <th className="px-6 py-4 text-left">Tags</th>
+                          <th className="px-6 py-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {userCases.map((c, idx) => {
+                          const fallbackStatus = c.status || 'open';
+                          const sColor = statusColors[fallbackStatus] || statusColors['open'];
+                          return (
+                            <motion.tr
+                              key={c._id}
+                              className="border-b border-white/5 hover:bg-white/[0.02] transition-all duration-300 group"
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ duration: 0.6, delay: idx * 0.1, ease: "easeOut" }}
+                            >
+                              <td className="px-6 py-4 font-mono text-primary font-bold">#{c.caseId}</td>
+                              <td className="px-6 py-4 text-slate-500 text-sm">{new Date(c.createdAt).toLocaleDateString()}</td>
+                              <td className="px-6 py-4">
+                                <motion.span
+                                  className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all duration-300 ${sColor.bg} ${sColor.text}`}
+                                >
+                                  {(c.status || 'open').replace(/-/g, ' ')}
+                                </motion.span>
+                              </td>
+                              <td className="px-6 py-4">
+                                {c.tags && c.tags.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1">
+                                    {c.tags.slice(0, 3).map(tag => (
+                                      <span key={tag} className="px-2 py-0.5 bg-white/5 rounded text-[9px] uppercase tracking-wider text-slate-400">{tag}</span>
+                                    ))}
+                                    {c.tags.length > 3 && <span className="text-slate-500 text-[10px]">+{c.tags.length - 3}</span>}
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-500 text-xs italic">No tags</span>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
+                                <button className="p-2 border border-violet-500/20 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 rounded-xl transition-all" onClick={() => openEditModal(c)}>
+                                  <Edit2 size={16} />
+                                </button>
+                                <button onClick={() => handleDeleteCase(c._id)} className="p-2 border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition-all">
+                                  <Trash2 size={16} />
+                                </button>
+                              </td>
+                            </motion.tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </motion.div>
@@ -412,9 +449,9 @@ export default function Admin() {
                     <select value={editForm.status} onChange={(e) => setEditForm({...editForm, status: e.target.value})}
                       className="w-full border rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 transition-all"
                       style={{ background: 'rgba(15,17,35,0.8)', borderColor: 'rgba(124,58,237,0.2)' }}>
-                      <option value="open">Open</option>
-                      <option value="in-progress">In Progress</option>
-                      <option value="pending-review">Pending Review</option>
+                      <option value="waiting-for-review">Waiting for Review</option>
+                      <option value="under-investigation">Under Investigation</option>
+                      <option value="resolved">Resolved</option>
                       <option value="closed">Closed</option>
                     </select>
                   </div>
