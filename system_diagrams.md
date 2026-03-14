@@ -7,14 +7,14 @@ Illustrates the high-level architecture of the Client-Server model, external ser
 
 ```mermaid
 graph TD
-    subgraph Client [Frontend (React + Vite)]
+    subgraph Client ["Frontend (React + Vite)"]
         UI[User Interface]
         AuthCtx[Auth Context]
         Router[React Router]
         State[State Management]
     end
 
-    subgraph Server [Backend (Node.js + Express)]
+    subgraph Server ["Backend (Node.js + Express)"]
         API[Express API Gateway]
         Middleware[JWT Auth Middleware]
         Controllers[Controllers: Auth, Case, File]
