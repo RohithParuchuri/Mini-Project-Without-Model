@@ -50,7 +50,7 @@ export default function CaseManagement() {
       fetch(`${API_URL}/cases`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(res => res.json())
         .then(data => { if (data.success) setCases(data.data); })
-        .catch(() => {});
+        .catch(() => { });
     }, 3000);
     return () => clearInterval(interval);
   }, [cases]);
@@ -151,9 +151,9 @@ export default function CaseManagement() {
     try {
       setLoading(true);
       const token = localStorage.getItem('accessToken');
-      
+
       const tagsArray = newCaseForm.tags.split(',').map(t => t.trim()).filter(t => t);
-      
+
       const response = await fetch(`${API_URL}/cases`, {
         method: 'POST',
         headers: {
@@ -188,21 +188,21 @@ export default function CaseManagement() {
 
   const filteredCases = cases.filter(c => {
     const matchesTab = activeTab === 'All' || c.status === activeTab.toLowerCase();
-    const matchesSearch = c.caseId?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         c.title?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = c.caseId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.title?.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesTab && matchesSearch;
   });
 
   return (
     <div className="w-full space-y-12 animate-in fade-in duration-500">
-      
+
       {/* Header Section */}
       <div className="flex justify-between items-end">
         <div className="space-y-4">
           <h1 className="text-5xl font-black text-white tracking-tight">Case Management</h1>
           <p className="text-slate-500 text-lg font-medium">Global registry of active digital investigations. Create, edit, and track your investigation cases.</p>
         </div>
-        <button 
+        <button
           onClick={() => setIsCreatingCase(true)}
           className="flex items-center gap-2 px-8 py-3 rounded-xl bg-[#F26419] text-white text-sm font-black uppercase tracking-widest hover:bg-[#d44f0d] transition-all"
         >
@@ -237,7 +237,7 @@ export default function CaseManagement() {
       <div className="flex justify-between items-center py-4">
         <div className="flex gap-8">
           {['All', 'waiting-for-review', 'under-investigation', 'resolved', 'closed'].map(tab => (
-            <button 
+            <button
               key={tab}
               onClick={() => setActiveTab(tab === 'All' ? 'All' : tab)}
               className={cn(
@@ -250,16 +250,16 @@ export default function CaseManagement() {
             </button>
           ))}
         </div>
-        
+
         <div className="flex items-center gap-6">
           <div className="relative flex items-center">
             <Search className="absolute left-0 text-slate-700" size={18} />
-            <input 
-              type="text" 
-              placeholder="SEARCH ID OR TITLE..." 
+            <input
+              type="text"
+              placeholder="SEARCH ID OR TITLE..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="bg-transparent border-none py-2 pl-8 text-xs font-black tracking-widest focus:outline-none text-white w-64 placeholder:text-slate-800" 
+              className="bg-transparent border-none py-2 pl-8 text-xs font-black tracking-widest focus:outline-none text-white w-64 placeholder:text-slate-800"
             />
           </div>
           <Filter className="text-slate-700 cursor-pointer hover:text-[#F26419] transition-colors" size={20} />
@@ -273,9 +273,9 @@ export default function CaseManagement() {
             <p className="text-slate-400">Loading cases...</p>
           </div>
         ) : filteredCases.length === 0 ? (
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }} 
-            animate={{ opacity: 1, y: 0 }} 
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
             className="text-center py-20 bg-white/[0.01] border border-white/5 rounded-3xl"
           >
             <div className="size-20 bg-white/[0.03] text-slate-500 rounded-2xl mx-auto flex items-center justify-center mb-6">
@@ -374,12 +374,12 @@ export default function CaseManagement() {
                     </motion.button>
                   </div>
                 </motion.div>
-                
+
                 {/* Expanded Details View */}
                 {expandedCase === c._id && (
-                  <motion.div 
-                    initial={{ opacity: 0, height: 0 }} 
-                    animate={{ opacity: 1, height: 'auto' }} 
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
                     className="px-6 py-6 border-b border-t border-white/5 bg-white/[0.01]"
                   >
                     <div className="grid grid-cols-3 gap-8">
@@ -534,7 +534,7 @@ export default function CaseManagement() {
       {/* Edit Case Modal */}
       {editingCase && (
         <motion.div
-  
+
           className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
