@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data         # pos_transactions.csv and video feeds live here
+      - ./events.jsonl:/app/events.jsonl
+      - sqlite_data:/app/db
+    environment:
+      - DB_PATH=/app/db/store_intelligence.db
+      - LOG_LEVEL=INFO
+      - POS_CSV_PATH=/app/data/pos_transactions.csv
+
+volumes:
+  sqlite_data:

@@ -1,0 +1,29 @@
+# Environments
+.env
+.env.*
+
+# Python Cache & Coverage
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Video Footage (large files >100MB fail GitHub push)
+*.mp4
+data/*.mp4
+data/CAM_*.mp4
+
+# Databases & SQLite auxiliary files
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Deep Learning weights (pre-downloaded at build time)
+*.pt
+yolov8n.pt
+
+# Staff appearance descriptors
+*.pkl
+staff_descriptors.pkl
