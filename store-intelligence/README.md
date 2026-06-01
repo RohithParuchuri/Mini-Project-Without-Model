@@ -1,87 +1,102 @@
-# Store Intelligence System (Step 22)
+# Store Intelligence System — Purplle Brigade Road (ST1008)
 
-This repository contains the complete Store Intelligence system built for the retail analytics hiring challenge. It parses CCTV camera streams to generate visitor and staff behavioral logs, matches transactions from POS records, exposes an intelligence REST API, and displays data in a terminal dashboard.
+End-to-end retail analytics pipeline: raw CCTV footage → behavioral events → real-time FastAPI analytics.
 
----
-
-## Quick Start (Exact 5 Commands)
-
-To run and initialize the system, execute the following commands in order:
+## Quick Start (5 commands)
 
 ```bash
-git clone <your-repo-url> && cd store-intelligence
+git clone https://github.com/YOUR_USERNAME/store-intelligence.git
+cd store-intelligence
 cp data/sample.env .env
 docker compose up --build -d
 bash pipeline/run.sh
-open http://localhost:8000/stores/ST1008/metrics
 ```
 
----
+Visit: http://localhost:8000/stores/ST1008/metrics
 
-## Setup & File Placement
+If you are working inside this workspace, use the project root directly:
 
-Before executing the pipeline, ensure the source files are placed inside the local data directory:
+```powershell
+cd "C:\Users\Victus\OneDrive\Desktop\purple_tech\store-intelligence-pipeline-setup\store-intelligence"
+docker compose up --build -d
+```
+
+Do not run `uvicorn app.main:app` from the parent `purple_tech` folder. The `app` package lives inside the `store-intelligence` project root.
+
+## Prerequisites
+
+- Docker Desktop installed and running
+- Python 3.11+ (for running pipeline outside Docker)
+- Camera footage files placed in data/ (see data/README.md)
+
+## Docker Setup
+
+The recommended process is Docker Compose from the `store-intelligence` project root. That keeps the API, SQLite volume, and input data paths aligned with the container paths used in `Dockerfile` and `docker-compose.yml`.
+
+```powershell
+cd "C:\Users\Victus\OneDrive\Desktop\purple_tech\store-intelligence-pipeline-setup\store-intelligence"
+docker compose up --build -d
+docker compose ps
+curl -sS http://127.0.0.1:8000/health
+```
+
+## Setup Data Files
 
 ```bash
-# 1. Create the data directory
-mkdir -p data
-
-# 2. Copy the POS transactions CSV
+# Rename and place POS data
 cp /path/to/Brigade_Bangalore_10_April_26.csv data/pos_transactions.csv
 
-# 3. Copy the camera footage clips
-cp /path/to/CAM_1.mp4 data/CAM_1.mp4
-cp /path/to/CAM_2.mp4 data/CAM_2.mp4
-cp /path/to/CAM_3.mp4 data/CAM_3.mp4
-cp /path/to/CAM_4.mp4 data/CAM_4.mp4
-cp /path/to/CAM_5.mp4 data/CAM_5.mp4
+# Place camera files
+cp /path/to/CAM_*.mp4 data/
 ```
 
-> [!NOTE]
-> **YOLO Weights Cache**: Model weights are downloaded automatically during docker compose build step (`docker compose up --build`). The initial build takes approximately 2 minutes to compile opencv and cache `yolov8n.pt`. Subsequent container builds use the cached images.
-
----
-
-## Running the Detection Pipeline
-
-To run the pipeline locally (without docker-compose):
+## Run the Detection Pipeline
 
 ```bash
-# Run the pipeline shell script
+# Processes all 5 cameras, generates events.jsonl
 bash pipeline/run.sh
+
+# Expected output: ~330 events in events.jsonl
+# Event types: ENTRY, EXIT, ZONE_ENTER, ZONE_EXIT,
+#              ZONE_DWELL, BILLING_QUEUE_JOIN,
+#              BILLING_QUEUE_ABANDON
 ```
 
-### Script Execution Parameters:
-* **Inputs**: Reads raw feeds from `data/CAM_*.mp4` and transactions from `data/pos_transactions.csv`.
-* **Output Log**: Outputs processed tracking actions to `events.jsonl`.
-* **Ingestion**: Automatically splits logs into batches of 500 and posts them to `http://localhost:8000/events/ingest`.
-
----
-
-## Testing
-
-To execute the unit and integration tests verifying API routing and operations:
+## Run Tests
 
 ```bash
+pip install -r requirements.txt
 pytest tests/ -v --tb=short
+# Expected: 26 passed, 84% coverage
 ```
 
----
-
-## Live Dashboard
-
-To launch the real-time terminal visual monitor:
+## Live Dashboard (Bonus)
 
 ```bash
-python dashboard/live_dashboard.py --events events.jsonl --store ST1008
+python dashboard/live_dashboard.py \
+	--events events.jsonl \
+	--store ST1008
 ```
 
-This updates live store metrics, visitor funnel drop-offs, heat scores, active operational anomalies, and displays an ingestion progress bar.
+## API Endpoints
 
----
+| Endpoint | Description |
+|----------|-------------|
+| GET /stores/ST1008/metrics | Unique visitors, conversion rate, zone dwell |
+| GET /stores/ST1008/funnel | Entry → Zone → Billing → Purchase |
+| GET /stores/ST1008/heatmap | Zone heat scores normalised 0–100 |
+| GET /stores/ST1008/anomalies | Queue spikes, conversion drops, dead zones |
+| GET /health | Service status, stale feed detection |
+| POST /events/ingest | Batch event ingestion (idempotent) |
 
-## Expected Output & Timezone Handling
+## Expected Output Note
 
-* **Timezone Offset**: All events and POS transactions use Indian Standard Time (IST, UTC+5:30) with explicit timezone offsets: `2026-04-10T20:10:02+05:30`.
-* **Zero Conversion Rate**: The provided camera clips are a short ~2-minute window (20:10–20:12 IST). The nearest POS transaction in the dataset falls 13 minutes outside this window (at 20:25). The system correctly returns `conversion_rate: 0.0` for this clip window. In a full production deployment with complete day-long feeds, the conversion rate would reflect real purchase data.
-* **Debug Video Verification**: Add the `--debug-video` flag during development runs to display zone polygon boundaries overlaid directly on active tracking output windows for visual verification.
+The provided clips are a ~2-minute window (20:10–20:12 IST).
+The nearest POS transaction falls 13 minutes outside this window.
+The system correctly returns conversion_rate: 0.0 for this window.
+A full production deployment with day-long feeds would show real conversion data.
+
+## Architecture
+
+See docs/DESIGN.md for full architecture and AI-assisted decisions.
+See docs/CHOICES.md for engineering trade-off reasoning.

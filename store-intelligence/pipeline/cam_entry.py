@@ -1,16 +1,26 @@
 import cv2
 import os
+import argparse
+import json
 import uuid
+import sys
+from pathlib import Path
 import numpy as np
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from ultralytics import YOLO
+
+if __package__ is None or __package__ == "":
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pipeline.emit import create_event
 from pipeline.reid import compute_appearance_descriptor, ReIDManager
 from pipeline.staff_id import extract_torso_crop, classify_staff
 
 IST = timezone(timedelta(hours=5, minutes=30))
+Y_LINE = 580
+X_RANGE = (200, 1200)
+DETECTION_CONFIDENCE = 0.25
 
 def process_entry_exit(
     video_path: str,
@@ -20,7 +30,7 @@ def process_entry_exit(
     clip_start_str: str,
     reid_manager: ReIDManager,
     frame_skip: int = 3,
-    min_conf: float = 0.25
+    min_conf: float = DETECTION_CONFIDENCE
 ):
     """
     Process CAM_3 to detect ENTRY, EXIT, and REENTRY events (Step 15).
@@ -56,8 +66,8 @@ def process_entry_exit(
     crossings_this_frame = []
     
     # Virtual crossing line properties
-    y_line = 580
-    x_range = (200, 1900)
+    y_line = Y_LINE
+    x_range = X_RANGE
     
     frame_idx = 0
     while True:
@@ -130,18 +140,18 @@ def process_entry_exit(
                     prev_x, prev_y = track_history[track_id][-2]
                     curr_x, curr_y = foot_x, foot_y
                     
-                    # Check if crossing occurred in the x range (300, 1100)
-                    if x_range[0] <= curr_x <= x_range[1]:
-                        # ENTRY: crossing top to bottom (y crosses y_line increasing)
-                        if prev_y < y_line <= curr_y:
+                    # Check if the person moved across the doorway divider while staying within the vertical gate.
+                    if x_range[0] <= curr_y <= x_range[1]:
+                        # ENTRY: right to left across the divider.
+                        if prev_x > y_line >= curr_x:
                             frame_crossings.append({
                                 "track_id": track_id,
                                 "type": "ENTRY",
                                 "bbox": bbox,
                                 "conf": conf
                             })
-                        # EXIT: crossing bottom to top (y crosses y_line decreasing)
-                        elif prev_y > y_line >= curr_y:
+                        # EXIT: left to right across the divider.
+                        elif prev_x < y_line <= curr_x:
                             frame_crossings.append({
                                 "track_id": track_id,
                                 "type": "EXIT",
@@ -219,3 +229,38 @@ def process_entry_exit(
         
     cap.release()
     return events_emitted, active_sessions
+
+
+def _main():
+    parser = argparse.ArgumentParser(description="Run CAM_3 entry/exit detection")
+    parser.add_argument("--video", required=True, help="Path to CAM_3 video")
+    parser.add_argument("--store", required=True, help="Store ID")
+    parser.add_argument("--clip-start", required=True, help="Clip start timestamp")
+    parser.add_argument("--out", default="entry_test.jsonl", help="Output JSONL path")
+    parser.add_argument("--model", default="yolov8n.pt", help="YOLO model path")
+    parser.add_argument("--tracker", default=None, help="Tracker config path")
+    parser.add_argument("--frame-skip", type=int, default=3, help="Process every Nth frame")
+    parser.add_argument("--min-conf", type=float, default=DETECTION_CONFIDENCE, help="Detection confidence threshold")
+    args = parser.parse_args()
+
+    reid_manager = ReIDManager()
+    events, _ = process_entry_exit(
+        video_path=args.video,
+        model_path=args.model,
+        tracker_config=args.tracker,
+        store_id=args.store,
+        clip_start_str=args.clip_start,
+        reid_manager=reid_manager,
+        frame_skip=args.frame_skip,
+        min_conf=args.min_conf,
+    )
+
+    with open(args.out, "w", encoding="utf-8") as output_file:
+        for event in events:
+            output_file.write(json.dumps(event) + "\n")
+
+    print(f"Wrote {len(events)} events to {args.out}")
+
+
+if __name__ == "__main__":
+    _main()

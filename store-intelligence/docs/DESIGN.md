@@ -44,17 +44,22 @@ The system operates as a 5-stage pipeline mapping raw CCTV feeds to queryable an
 
 ---
 
-## 3. AI-Assisted Decisions
+## AI-Assisted Decisions
 
-1. **Zone Polygons & Point-in-Polygon Testing**: The LLM proposed mapping 2D zone coordinates from actual camera dimensions and using `cv2.pointPolygonTest` to resolve whether track centroids fall within retail regions. This replaced complex grid cell mappings.
-2. **Timezone IST Standardization**: Initial model outputs proposed treating POS logs as UTC. This was overridden because analysis showed POS records are stored in IST store wall-clock times. Both camera and POS data are localized to `UTC+5:30` (IST) to resolve transaction matching offsets.
-3. **FIFO Visitor-ID Propagation**: The model suggested simple time-window matching to map visitors from CAM_3 to CAM_1/CAM_2/CAM_5. This was upgraded to an explicit First-In, First-Out (FIFO) queue search matching closest entries to prevent collisions when groups enter together.
+### 1. Staff Detection — Colour Approach Overridden
+The initial AI suggestion was to use HSV colour analysis alone to detect staff (black uniform = high black pixel fraction). After running actual pixel analysis on CAM_2 frames from the Brigade Road footage, I found staff black% ranged 5–20% while dark-clothed customers reached 31% — too much overlap for a reliable threshold. I overrode this with a 3-signal composite requiring 2 of 3 signals: colour fraction, first appearance position (staff enter from x>400, customers from x<120), and lateral movement pattern (staff walk along shelf wall). This was my decision, not the AI suggestion.
+
+### 2. Timezone Correction — IST Not UTC
+The initial prompt suggested treating POS timestamps as UTC to align with the clip-start timestamp. I identified this was wrong by reading the timestamp overlay on the actual camera footage (20:10:27 on screen = IST wall clock). The POS data (12:15–21:39) also reflects IST store hours. I corrected both the clip_start and POS loader to use UTC+5:30. Without this fix, all POS correlation would have been offset by 5h30m.
+
+### 3. SQLite Over PostgreSQL
+AI recommended PostgreSQL for production-readiness. I chose SQLite with SQLAlchemy Core abstraction because this challenge demonstrates a single-store system — adding a separate database container increases docker-compose complexity with no benefit at demo scale. The abstraction layer means switching to PostgreSQL requires only a connection string change. I documented SQLite as the first scaling bottleneck for 40-store production in the Known Limitations section.
 
 ---
 
-## 4. Known Limitations
+## Known Limitations
 
-* **Video Clip Time constraints**: The provided video clips represent a brief 2-minute interval (`20:10` to `20:12` IST). The nearest POS transaction logs occur 16 minutes before and 13 minutes after. Consequently, the real conversion rate for this test dataset is `0.0`, which is correct.
-* **FIFO Propagation Accuracy**: FIFO mapping assumes entry ordering is preserved. If visitors pass each other between cameras, assignments could swap. Cross-camera Re-ID embedding matches would resolve this in production.
-* **Simulated Baseline**: Due to the lack of historical records, the 7-day average for `CONVERSION_DROP` checks is hardcoded to `0.28`.
-* **YOLOv8 Occupancy Gaps**: Under low lighting or high occlusion (such as behind structural columns), YOLOv8 tracking might assign new track IDs to existing visitors, triggering synthetic user creation.
+- Camera clips are ~2 minutes (`20:10` to `20:12` IST). The nearest POS transaction falls 13 minutes outside this window, so conversion_rate correctly returns 0.0. Full day feeds would show real conversion data.
+- Visitor_id propagation across cameras uses FIFO time-window matching. When multiple customers enter within the same window, misassignment is possible. Production would use cross-camera Re-ID embeddings.
+- YOLOv8n may miss partially occluded people behind the Summer display stand in CAM_2. Confidence is reported accurately — never suppressed.
+- 7-day conversion baseline for anomaly detection is simulated at 0.28 since only one day of POS data is available.

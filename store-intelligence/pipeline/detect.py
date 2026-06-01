@@ -3,10 +3,15 @@ import argparse
 import pickle
 import json
 import uuid
+import sys
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any
+
+if __package__ is None or __package__ == "":
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pipeline.reid import ReIDManager, calculate_cosine_similarity
 from pipeline.cam_entry import process_entry_exit
@@ -15,6 +20,7 @@ from pipeline.cam_billing import process_billing
 from pipeline.cam_stockroom import process_stockroom
 
 IST = timezone(timedelta(hours=5, minutes=30))
+MAX_PROPAGATION_WINDOW = timedelta(seconds=60)
 
 def verify_tracker() -> str:
     """Verify bytetrack.yaml config path or return fallback (Correction 7)."""
@@ -185,13 +191,6 @@ def main():
     # We walk chronologically through all CAM_3 events to build open_sessions list dynamically
     cam3_sorted = sorted(entry_events, key=lambda x: datetime.fromisoformat(x["timestamp"]))
     
-    # We will process zone events camera-by-camera, track-by-track.
-    # To propagate visitor_ids, let's look at each zone/billing track.
-    # For each track_id in CAM_1, CAM_2, CAM_5:
-    #   Get its earliest enter event time.
-    #   Find matching ENTRY/REENTRY in CAM_3 within 2 minutes.
-    #   Apply FIFO assignment.
-    
     def propagate_ids(tracks_dict: Dict[int, Any], events_list: List[Dict[str, Any]], cam_id: str):
         assigned_visitors = set()
         
@@ -206,24 +205,19 @@ def main():
         tracks_sorted.sort(key=lambda x: x[1])
         
         for track_id, first_ts in tracks_sorted:
-            # Find candidate ENTRY sessions from CAM_3
-            candidates = []
-            for s in entry_events_sorted:
-                s_ts = datetime.fromisoformat(s["timestamp"])
-                diff = abs((s_ts - first_ts).total_seconds())
-                if diff <= 90.0 and s["visitor_id"] not in assigned_visitors:
-                    candidates.append(s)
-            
-            if candidates:
-                # FIFO: assign oldest match (Correction 4)
-                chosen_session = candidates[0]
-                visitor_id = chosen_session["visitor_id"]
+            candidates = [
+                s for s in entry_events_sorted
+                if abs(datetime.fromisoformat(s["timestamp"]) - first_ts) <= MAX_PROPAGATION_WINDOW
+                and s["visitor_id"] not in assigned_visitors
+            ]
+
+            if len(candidates) == 1:
+                visitor_id = candidates[0]["visitor_id"]
                 assigned_visitors.add(visitor_id)
-                tracks_dict[track_id]["visitor_id"] = visitor_id
             else:
-                # Generate synthetic visitor_id if entered before clip start (Correction 4)
                 visitor_id = "VIS_SYN_" + uuid.uuid4().hex[:8]
-                tracks_dict[track_id]["visitor_id"] = visitor_id
+
+            tracks_dict[track_id]["visitor_id"] = visitor_id
                 
             # Propagate to all events for this track_id (Step 3 of algorithm)
             for evt in events_list:
