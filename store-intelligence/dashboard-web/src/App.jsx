@@ -1251,13 +1251,13 @@ const SankeyFlow = ({ nodes = [], links = [] }) => {
   // Helper to color nodes dynamically
   const getNodeColor = (id) => {
     const nid = id.toUpperCase();
-    if (nid === "ENTRY") return "from-indigo-600 to-blue-500 shadow-indigo-500/30";
-    if (nid === "EXIT") return "from-emerald-600 to-teal-500 shadow-emerald-500/30";
-    if (nid === "QUEUE_ABANDON" || nid.includes("ABANDON")) return "from-rose-600 to-pink-500 shadow-rose-500/30";
-    if (nid.includes("BILLING")) return "from-purple-600 to-indigo-500 shadow-purple-500/30";
-    if (nid.includes("SKINCARE") || nid.includes("FRAGRANCE")) return "from-teal-600 to-emerald-500 shadow-teal-500/30";
-    if (nid.includes("MAKEUP") || nid.includes("MIRROR")) return "from-pink-600 to-rose-500 shadow-pink-500/30";
-    return "from-slate-600 to-slate-500 shadow-slate-500/30";
+    if (nid === "ENTRY") return "fill-indigo-500 stroke-indigo-400";
+    if (nid === "EXIT") return "fill-emerald-500 stroke-emerald-400";
+    if (nid === "QUEUE_ABANDON" || nid.includes("ABANDON")) return "fill-rose-500 stroke-rose-400";
+    if (nid.includes("BILLING")) return "fill-purple-500 stroke-purple-400";
+    if (nid.includes("SKINCARE") || nid.includes("FRAGRANCE")) return "fill-teal-500 stroke-teal-400";
+    if (nid.includes("MAKEUP") || nid.includes("MIRROR")) return "fill-pink-500 stroke-pink-400";
+    return "fill-slate-500 stroke-slate-400";
   };
 
   return (
@@ -1375,8 +1375,8 @@ const SankeyFlow = ({ nodes = [], links = [] }) => {
                     height={node.h}
                     rx="4"
                     ry="4"
-                    className={`transition-all duration-300 border border-white/5 bg-gradient-to-br ${color} ${
-                      isHovered ? "scale-x-[1.08] shadow shadow-purple-500/10" : ""
+                    className={`transition-all duration-300 stroke-[1.5] ${color} ${
+                      isHovered ? "scale-x-[1.08]" : ""
                     }`}
                     style={{
                       opacity: isFaded ? 0.25 : 1
@@ -1393,7 +1393,7 @@ const SankeyFlow = ({ nodes = [], links = [] }) => {
                       opacity: isFaded ? 0.25 : 1
                     }}
                   >
-                    {node.name.replace(/_/g, " ")}
+                    {(node.id || "").replace(/_/g, " ")}
                   </text>
 
                   {/* Weight label (small percentage overlay) */}
