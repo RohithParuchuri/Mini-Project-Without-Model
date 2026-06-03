@@ -1212,24 +1212,24 @@ const SankeyFlow = ({ nodes = [], links = [] }) => {
     if (tgtUpper === "EXIT" || tgtUpper === "QUEUE_ABANDON" || tgtUpper.includes("ABANDON")) {
       // Dropout path: Red/Orange theme
       colorClass = isActive
-        ? "fill-rose-500/40 stroke-rose-400/50"
-        : "fill-rose-500/15 stroke-rose-500/10";
+        ? "fill-rose-400/50 stroke-rose-300/60"
+        : "fill-rose-400/25 stroke-rose-400/15";
       glowColor = "rgba(244, 63, 94, 0.4)";
-      particleColor = "#f43f5e";
+      particleColor = "#fb7185";
     } else if (tgtUpper.includes("BILLING") || srcUpper.includes("BILLING")) {
       // Checkout conversion path: Vibrant purple/emerald
       colorClass = isActive
-        ? "fill-purple-500/40 stroke-purple-400/50"
-        : "fill-purple-500/15 stroke-purple-500/10";
+        ? "fill-purple-400/50 stroke-purple-300/60"
+        : "fill-purple-400/25 stroke-purple-400/15";
       glowColor = "rgba(168, 85, 247, 0.4)";
-      particleColor = "#a855f7";
+      particleColor = "#c084fc";
     } else {
       // Standard transitional flow
       colorClass = isActive
-        ? "fill-indigo-500/40 stroke-indigo-400/50"
-        : "fill-indigo-500/15 stroke-indigo-500/10";
+        ? "fill-indigo-400/50 stroke-indigo-300/60"
+        : "fill-indigo-400/25 stroke-indigo-400/15";
       glowColor = "rgba(99, 102, 241, 0.4)";
-      particleColor = "#6366f1";
+      particleColor = "#818cf8";
     }
 
     return {
@@ -1251,13 +1251,13 @@ const SankeyFlow = ({ nodes = [], links = [] }) => {
   // Helper to color nodes dynamically
   const getNodeColor = (id) => {
     const nid = id.toUpperCase();
-    if (nid === "ENTRY") return "fill-indigo-500 stroke-indigo-400";
-    if (nid === "EXIT") return "fill-emerald-500 stroke-emerald-400";
-    if (nid === "QUEUE_ABANDON" || nid.includes("ABANDON")) return "fill-rose-500 stroke-rose-400";
-    if (nid.includes("BILLING")) return "fill-purple-500 stroke-purple-400";
-    if (nid.includes("SKINCARE") || nid.includes("FRAGRANCE")) return "fill-teal-500 stroke-teal-400";
-    if (nid.includes("MAKEUP") || nid.includes("MIRROR")) return "fill-pink-500 stroke-pink-400";
-    return "fill-slate-500 stroke-slate-400";
+    if (nid === "ENTRY") return "fill-indigo-400 stroke-indigo-300";
+    if (nid === "EXIT") return "fill-emerald-400 stroke-emerald-300";
+    if (nid === "QUEUE_ABANDON" || nid.includes("ABANDON")) return "fill-rose-400 stroke-rose-300";
+    if (nid.includes("BILLING")) return "fill-purple-400 stroke-purple-300";
+    if (nid.includes("SKINCARE") || nid.includes("FRAGRANCE")) return "fill-teal-400 stroke-teal-300";
+    if (nid.includes("MAKEUP") || nid.includes("MIRROR")) return "fill-pink-400 stroke-pink-300";
+    return "fill-slate-400 stroke-slate-300";
   };
 
   return (
@@ -1337,11 +1337,11 @@ const SankeyFlow = ({ nodes = [], links = [] }) => {
                     d={link.centerLine}
                     fill="none"
                     stroke={link.particleColor}
-                    strokeWidth="1"
+                    strokeWidth="1.5"
                     strokeDasharray="5 8"
                     className="animate-flow-dash pointer-events-none"
                     style={{
-                      opacity: link.isActive ? 0.75 : 0.2
+                      opacity: link.isActive ? 0.95 : 0.45
                     }}
                   />
                 )}
@@ -1369,15 +1369,13 @@ const SankeyFlow = ({ nodes = [], links = [] }) => {
                 >
                   {/* Node Rect */}
                   <rect
-                    x={node.x}
+                    x={isHovered ? node.x - 3 : node.x}
                     y={node.y}
-                    width={node.w}
+                    width={isHovered ? node.w + 6 : node.w}
                     height={node.h}
                     rx="4"
                     ry="4"
-                    className={`transition-all duration-300 stroke-[1.5] ${color} ${
-                      isHovered ? "scale-x-[1.08]" : ""
-                    }`}
+                    className={`transition-all duration-300 stroke-[1.5] ${color}`}
                     style={{
                       opacity: isFaded ? 0.25 : 1
                     }}
@@ -1388,7 +1386,7 @@ const SankeyFlow = ({ nodes = [], links = [] }) => {
                     x={node.col === 4 ? node.x - 8 : node.x + node.w + 8}
                     y={node.y + node.h / 2 + 3}
                     textAnchor={node.col === 4 ? "end" : "start"}
-                    className="text-[9px] font-extrabold fill-slate-300"
+                    className="text-[9.5px] font-extrabold fill-slate-100"
                     style={{
                       opacity: isFaded ? 0.25 : 1
                     }}
@@ -1401,7 +1399,7 @@ const SankeyFlow = ({ nodes = [], links = [] }) => {
                     x={node.col === 4 ? node.x - 8 : node.x + node.w + 8}
                     y={node.y + node.h / 2 + 12}
                     textAnchor={node.col === 4 ? "end" : "start"}
-                    className="text-[7.5px] font-semibold fill-slate-500"
+                    className="text-[7.5px] font-bold fill-slate-400"
                     style={{
                       opacity: isFaded ? 0.25 : 1
                     }}
