@@ -82,3 +82,26 @@ class HealthResponse(BaseModel):
     stale_feeds: List[str]
     uptime_seconds: int
     checked_at: str
+
+class AskRequest(BaseModel):
+    question: str
+
+class AskResponse(BaseModel):
+    store_id: str
+    question: str
+    answer: str
+    mode: str
+
+class FlowNode(BaseModel):
+    id: str
+
+class FlowLink(BaseModel):
+    source: str
+    target: str
+    value: int
+
+class FlowResponse(BaseModel):
+    store_id: str
+    nodes: List[FlowNode]
+    links: List[FlowLink]
+

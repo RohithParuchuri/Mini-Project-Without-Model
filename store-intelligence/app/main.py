@@ -1,3 +1,9 @@
+import os
+from dotenv import load_dotenv
+# Load .env file robustly from project root using absolute path relative to this file
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+_dotenv_path = os.path.join(_current_dir, "..", ".env")
+load_dotenv(_dotenv_path)
 import time
 import uuid
 import logging
@@ -84,9 +90,23 @@ async def logging_middleware(request: Request, call_next):
 
     logger.info("API request completed", **log_data)
     
-    # Attach trace ID to response headers
     response.headers["X-Trace-ID"] = trace_id
     return response
+
+from fastapi import WebSocket, WebSocketDisconnect
+from app.websocket import manager
+
+@app.websocket("/stores/{store_id}/ws")
+async def websocket_endpoint(websocket: WebSocket, store_id: str):
+    await manager.connect(websocket, store_id)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, store_id)
+    except Exception as e:
+        logger.error("WebSocket connection error", store_id=store_id, error=str(e))
+        manager.disconnect(websocket, store_id)
 
 # Global Exception Handler (Correction 3 & specification check)
 @app.exception_handler(Exception)
@@ -121,6 +141,8 @@ from app.funnel import router as funnel_router
 from app.heatmap import router as heatmap_router
 from app.anomalies import router as anomalies_router
 from app.health import router as health_router
+from app.ask import router as ask_router
+from app.flow import router as flow_router
 
 # Register routers
 app.include_router(ingestion_router)
@@ -129,3 +151,5 @@ app.include_router(funnel_router)
 app.include_router(heatmap_router)
 app.include_router(anomalies_router)
 app.include_router(health_router)
+app.include_router(ask_router)
+app.include_router(flow_router)
